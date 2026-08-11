@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
+/*
+ * One committed look: dark, quiet, serious. The product's job is to make a
+ * candidate uncomfortable in a useful way, so the palette stays out of the way
+ * and colour is spent almost entirely on risk.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #0b0c0e;
+  --ink-raised: #131518;
+  --ink-line: #23262b;
+  --paper: #ecedef;
+  --paper-dim: #9aa0a8;
+  --paper-faint: #6b7178;
+
+  --risk-low: #4ba3a0;
+  --risk-medium: #d9a441;
+  --risk-high: #e0713c;
+  --risk-veryhigh: #d9483f;
+  --accent: #e8e6e1;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--ink);
+  --color-ink-raised: var(--ink-raised);
+  --color-ink-line: var(--ink-line);
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-paper-faint: var(--paper-faint);
+  --color-risk-low: var(--risk-low);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-high: var(--risk-high);
+  --color-risk-veryhigh: var(--risk-veryhigh);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--risk-high);
+  color: #0b0c0e;
+}
+
+/* The resume quote style used everywhere a claim is shown in the user's words. */
+.claim-quote {
+  border-left: 2px solid var(--ink-line);
+  padding-left: 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--paper);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
 }

@@ -1,8 +1,8 @@
 # AI Resume Truth Checker — Product Plan
 
 **Saved:** 2026-08-08
-**Status:** Plan captured, implementation not started (pending clarifying answers)
-**Version:** 1.0
+**Status:** v1 scope (§40) code-complete and unverified against a real model — see §42 (2026-08-10)
+**Version:** 1.1
 **Product Type:** AI career / interview preparation
 **MVP:** Web application
 **Primary User:** Software engineers and technical professionals
@@ -1060,3 +1060,104 @@ This can eventually connect to the **Codexa / AI engineering interview** directi
 * Analysis is a single batched extraction call (not one call per bullet) to stay inside free-tier rate limits.
 * Interview turns are one call each — the only per-turn cost — capped at the session length.
 * No blob storage: parsing happens in-process, the file is discarded after text extraction.
+
+---
+
+# 42. Implementation status & build sequence (2026-08-10)
+
+Header at the top of this file says "implementation not started". That is no longer true — the
+v1 scope from §40 is code-complete and unverified. This section records what exists, what is
+missing, and the order to work in.
+
+**Verified 2026-08-10:** `npm run typecheck`, `npm run lint`, and `npm run build` all pass;
+68 tests across 6 files pass. All work is uncommitted on top of the single
+`Initial commit from Create Next App`.
+
+## 42.1 What is built
+
+All six screens from §40 exist and the full `Resume → Claims → Risk → Interview → Score` loop
+is wired end to end.
+
+| Plan section | Status | Where |
+| --- | --- | --- |
+| §6 Landing | Done — hero, the "Reduced API latency by 40%" example, the 5 questions | `app/page.tsx` |
+| §7 Upload | Done — PDF/DOCX/TXT, paste fallback for scanned PDFs, optional target role | `app/upload/`, `lib/parse/extract-text.ts` |
+| §8–9 Parsing & claim extraction | Done — one batched call, one JSON-repair retry, dedupe | `lib/claims/extract.ts` |
+| §10–11 Risk engine | Done — **deterministic in code**, not LLM-scored | `lib/claims/risk.ts`, pinned by `tests/risk.test.ts` |
+| §12 Defensibility score | Done — mean + p90 blend, so safe bullets can't hide two indefensible ones | `lib/claims/risk.ts` |
+| §13 Claim detail | Done — gaps, missing evidence, likely questions behind Suspense | `app/r/[id]/claims/[claimId]/page.tsx` |
+| §16–17 Interview | Done — 3 pressure levels, 5 questions, 2 per claim, follow-ups react to the prior answer | `lib/interview/`, `app/r/[id]/interview/` |
+| §18 Evaluation | Done — 6 weighted dimensions, weakest/strongest, transcript | `lib/interview/score.ts` |
+| §19 Heatmap | Partial — the report lists every claim with a risk bar, but does not render the resume itself | `app/r/[id]/page.tsx` |
+| §31 Integrity rule | Done — `resumeIntegrityFlag` surfaces a mismatch without inventing numbers | `lib/interview/evaluate.ts` |
+| §41 LLM abstraction | Done — OpenRouter → Groq → Ollama chain, a 429 falls through | `lib/llm/` |
+| §41 Anonymous session | Done — httpOnly cookie, raw file never persisted, report bound to session | `lib/session.ts`, `lib/load-analysis.ts` |
+
+Deferred per §41 and correctly absent: evidence system, job-description mode, dashboard, voice.
+
+## 42.2 The governing fact
+
+**This code has never talked to a real model.** There is no `.env.local`, no API key, no
+database. Every prompt in `extract.ts`, `questions.ts`, and `evaluate.ts` is unvalidated
+guesswork that happens to typecheck. That dominates the sequence below.
+
+## 42.3 Phase 0 — Prove it works at all
+
+1. **Commit what exists.** ~2,500 lines untracked. Branch and commit before touching anything,
+   including the AGENTS.md block, per its own instructions.
+2. **Get an OpenRouter key; write `.env.local`** (`OPENROUTER_API_KEY`, optionally `GROQ_API_KEY`).
+3. **Verify the model chain is not stale.** `DEFAULT_CHAIN` in `lib/llm/index.ts:22` hardcodes six
+   IDs (`deepseek/deepseek-chat-v3-0324:free`, `qwen/qwen3-235b-a22b:free`, …). Free-tier IDs churn
+   constantly. Check each against the live catalog and prune the dead ones.
+4. **Run `scripts/smoke.mts` against a real model.** It already prints what the report screen
+   would show, so a prompt change can be judged on output rather than on whether types compile.
+5. **Walk the whole flow in the browser** with a real resume.
+
+**Exit criterion is not "it ran."** It is §33: do the 5 riskiest claims and their questions make
+you flinch? If a free open model cannot produce that reaction, nothing below matters. Expect the
+real Phase 0 work to be prompt iteration, not code.
+
+## 42.4 Phase 1 — Make it survivable in production
+
+6. **Provision Neon, set `DATABASE_URL`.** Not optional, despite what `lib/store/index.ts:14`
+   implies: `MemoryStore` is per-process, so on serverless an analysis written by one instance is
+   a 404 on the next. Today the app is only correct on a single long-lived server.
+7. **Rate-limit `POST /api/interview/[id]/answer`.** It has none. Each answer costs *two* LLM calls
+   (evaluate + next question) and is unbounded — the largest free-tier hole. The other two routes
+   are limited.
+8. **Reuse pre-generated openers.** `lib/interview/runner.ts:59` calls `generateQuestions(count:1)`
+   for the first question even though `attachLikelyQuestions` already generated five at analysis
+   time. One wasted free-tier call per interview.
+9. **Add a Postgres TTL sweep.** `MemoryStore` expires records at 6h; `PostgresStore` keeps resume
+   text forever. Add a delete-older-than cron and say so in the UI — §41 promised the *file* isn't
+   stored, but the extracted text is.
+10. **Deploy to Vercel** with those env vars, then walk the flow again on the deployed URL.
+
+## 42.5 Phase 2 — Close the real UX holes
+
+11. **Interview resume-on-refresh.** The transcript lives in React state; a refresh mid-interview
+    loses it even though the server has every turn. Needs `GET /api/interview/[id]` and client
+    rehydration.
+12. **Keyboard-accessible dropzone.** `app/upload/upload-form.tsx:98` is a bare `div` with
+    `onClick` — no `role`, `tabIndex`, or key handler.
+13. **`loading.tsx` and `error.tsx` for `/r/[id]`.** Cold Neon plus Suspense question generation
+    means visible dead air.
+14. **Write a real README** — setup, env vars, model chain, how to run the smoke script. It is
+    still stock create-next-app.
+
+## 42.6 Phase 3 — Instrument, then decide
+
+15. **Log the §32 funnel:** analysis completed, claim detail opened (the aha), interview started,
+    interview completed. Without it there is no way to tell whether the §33 experiment passed.
+16. **Recruit the first 10 resumes by hand** (§36). Record which claims and which questions land.
+
+## 42.7 Open decision: resume rewrite
+
+§23 lists "basic resume rewrite suggestions" as MVP-required; §41 defers rewrite entirely. These
+conflict, and rewrite is genuinely not built — only the interview-time `resumeIntegrityFlag`,
+which fires *after* an answer contradicts a line, not on the report itself.
+
+Recommendation: keep it deferred. §41 is the later and more considered decision, and rewrite is
+the one feature that pulls the product back toward the crowded optimizer category §37 warns
+against. If it goes into v1 anyway, it slots in as Phase 2.5 — a per-claim "how would you word
+this honestly?" action, hard-constrained to never introduce a number the user did not supply.
