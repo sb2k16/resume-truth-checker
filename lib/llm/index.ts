@@ -17,12 +17,23 @@ export { extractJson, parseJson } from "./json";
  * the chain is tried top to bottom and a rate limit falls through to the next
  * entry, which is what keeps this inside the $0-20/mo budget.
  *
+ * The OpenRouter entries are deliberately spread across vendors — NVIDIA,
+ * Google, OpenAI's open release — because free-tier quotas are metered per
+ * upstream provider. Three DeepSeek variants would share one bucket and fall
+ * over together.
+ *
+ * Free model ids churn: OpenRouter retires them without notice, and every id in
+ * the original version of this list was gone within days. Re-check with
+ * `npm run check:models` before blaming a prompt for a failure.
+ *
  * Override with LLM_MODELS="provider:model,provider:model".
  */
-const DEFAULT_CHAIN: LlmTarget[] = [
-  { provider: "openrouter", model: "deepseek/deepseek-chat-v3-0324:free" },
-  { provider: "openrouter", model: "qwen/qwen3-235b-a22b:free" },
-  { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" },
+export const DEFAULT_CHAIN: LlmTarget[] = [
+  // Verified against the live catalog 2026-08-10; all support response_format.
+  { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
+  { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
+  { provider: "openrouter", model: "openai/gpt-oss-20b:free" },
+  { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free" },
   { provider: "groq", model: "llama-3.3-70b-versatile" },
   { provider: "groq", model: "qwen/qwen3-32b" },
   { provider: "ollama", model: "qwen3:8b" },
