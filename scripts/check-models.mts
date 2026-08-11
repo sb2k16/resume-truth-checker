@@ -47,8 +47,10 @@ async function main() {
     console.log(`ok     ${target.model}  (ctx ${model.context_length}, ${json})`);
   }
 
-  for (const target of other) {
-    console.log(`skip   ${target.provider}:${target.model}  (not in this catalog)`);
+  await checkGroq();
+
+  for (const target of other.filter((t) => t.provider !== "groq")) {
+    console.log(`skip   ${target.provider}:${target.model}  (not checkable)`);
   }
 
   if (missing > 0) {
@@ -70,6 +72,39 @@ async function main() {
         "metered per upstream provider, so same-vendor fallbacks fail together.",
     );
     process.exitCode = 1;
+  }
+}
+
+/**
+ * Groq's list needs the key, so this is best-effort — but Groq retires models
+ * exactly as readily as OpenRouter does, and one of the two originally in the
+ * chain was already gone.
+ */
+async function checkGroq(): Promise<void> {
+  const targets = DEFAULT_CHAIN.filter((target) => target.provider === "groq");
+  if (targets.length === 0) return;
+
+  const key = process.env.GROQ_API_KEY;
+  if (!key) {
+    for (const target of targets) {
+      console.log(`skip   groq:${target.model}  (set GROQ_API_KEY to check)`);
+    }
+    return;
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/models", {
+    headers: { authorization: `Bearer ${key}` },
+  });
+  if (!response.ok) {
+    console.log(`skip   groq  (/models returned ${response.status})`);
+    return;
+  }
+
+  const { data } = (await response.json()) as { data: { id: string }[] };
+  const live = new Set(data.map((model) => model.id));
+  for (const target of targets) {
+    console.log(live.has(target.model) ? `ok     groq:${target.model}` : `GONE   groq:${target.model}`);
+    if (!live.has(target.model)) process.exitCode = 1;
   }
 }
 

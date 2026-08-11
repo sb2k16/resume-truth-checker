@@ -35,8 +35,15 @@ export const DEFAULT_CHAIN: LlmTarget[] = [
   { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
   { provider: "openrouter", model: "openai/gpt-oss-20b:free" },
   { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free" },
+  // Groq is the fastest of the free tiers by a wide margin; these are its
+  // open-weight models. Verified against the live /models list 2026-08-10.
+  //
+  // gpt-oss-120b is the stronger of the two but sits second: Groq gates models
+  // per project, and a key without it enabled gets a 403 on every attempt. A
+  // blocked model costs a wasted round-trip when it leads and nothing when it
+  // follows, so the one that always answers goes first.
   { provider: "groq", model: "llama-3.3-70b-versatile" },
-  { provider: "groq", model: "qwen/qwen3-32b" },
+  { provider: "groq", model: "openai/gpt-oss-120b" },
   { provider: "ollama", model: "qwen3:8b" },
 ];
 

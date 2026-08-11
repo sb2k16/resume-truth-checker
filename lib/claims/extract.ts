@@ -22,12 +22,12 @@ Rules:
 - Judge signals from the resume text ALONE, not from what is plausible.
 
 Signal definitions:
-- quantified: the claim states a number, percentage, or magnitude.
+- quantified: the claim asserts a MEASURED result or scale — a percentage, a rate, a throughput, a latency, a cost. A plain count of people, teams or projects ("mentored three engineers", "migration of four teams") is NOT a measurement: set this false. Nobody asks for the baseline of "three engineers", and treating a headcount as a metric buries the claims that really do need one.
 - hasBaseline: the text gives the before-state or absolute values, not just a delta.
 - hasMeasurementMethod: the text says how it was measured (tool, metric, percentile).
 - hasTimeframe: the text gives a period over which the result held.
 - ownership: "individual" if the candidate is the stated actor ("I built", "Designed"), "shared" if credited to a team, "ambiguous" if it cannot be told apart.
-- scopeMagnitude: small (one service or feature), medium (a system or team), large (multiple teams or a product), extreme (company-wide platform or org).
+- scopeMagnitude: small (one service or feature), medium (a system or team), large (multiple teams or a product), extreme (company-wide platform or org). Wording that claims the organisation's own infrastructure — "the company's data platform", "our core architecture" — is extreme.
 - technicalSpecificity: high (names concrete systems, techniques, constraints), medium (some specifics), low (generic verbs only).
 
 Categories: ${CLAIM_CATEGORIES.join(", ")}.

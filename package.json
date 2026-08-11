@@ -9,8 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check:models": "tsx scripts/check-models.mts",
-    "smoke": "tsx scripts/smoke.mts"
+    "check:models": "tsx --env-file-if-exists=.env.local scripts/check-models.mts",
+    "smoke": "tsx --env-file-if-exists=.env.local scripts/smoke.mts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
