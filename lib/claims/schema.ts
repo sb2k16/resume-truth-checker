@@ -60,9 +60,27 @@ export const extractedClaimSchema = z.object({
 
 export type ExtractedClaim = z.infer<typeof extractedClaimSchema>;
 
-export const extractionResponseSchema = z.object({
-  claims: z.array(extractedClaimSchema).max(40),
-});
+/**
+ * Weak models routinely drop the envelope and return the bare payload — asked
+ * for {"claims":[...]} they emit [...] instead, and the repair prompt tends to
+ * repeat the mistake rather than fix it. The envelope carries no information,
+ * so accept either form rather than spending a second free-tier call arguing
+ * about it.
+ */
+function unwrapped<K extends string, T extends z.ZodTypeAny>(key: K, inner: T) {
+  return z.preprocess(
+    (value) =>
+      value !== null && typeof value === "object" && !(key in value)
+        ? { [key]: value }
+        : value,
+    z.object({ [key]: inner } as { [P in K]: T }),
+  );
+}
+
+export const extractionResponseSchema = unwrapped(
+  "claims",
+  z.array(extractedClaimSchema).max(40),
+);
 
 /** A claim after the risk engine has scored it and the store has given it an id. */
 export interface ScoredClaim extends ExtractedClaim {
@@ -77,28 +95,76 @@ export interface ScoredClaim extends ExtractedClaim {
   likelyQuestions: string[];
 }
 
-export const questionsResponseSchema = z.object({
-  questions: z.array(z.string().min(8).max(400)).min(1).max(8),
-});
+export const questionsResponseSchema = unwrapped(
+  "questions",
+  z.array(z.string().min(8).max(400)).min(1).max(8),
+);
 
-export const batchQuestionsResponseSchema = z.object({
-  questionsByClaim: z.record(z.string(), z.array(z.string().min(8).max(400)).max(8)),
-});
+export const batchQuestionsResponseSchema = unwrapped(
+  "questionsByClaim",
+  z.record(z.string(), z.array(z.string().min(8).max(400)).max(8)),
+);
+
+/**
+ * Collapse the near-misses weak models produce for a free-text field: an object
+ * of sub-points where a sentence was asked for, or a list of them. The content
+ * is right, only the container is wrong, and every one of these costs a
+ * free-tier call to rediscover.
+ */
+function collapseToText(value: unknown): unknown {
+  if (value === null || value === undefined || typeof value === "string") return value;
+
+  const parts =
+    Array.isArray(value) ? value
+    : typeof value === "object" ? Object.values(value)
+    : [];
+
+  const text = parts
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join(" ")
+    .trim();
+
+  return text.length > 0 ? text : value;
+}
+
+/**
+ * Over-length prose is truncated rather than rejected. These fields are
+ * advisory — losing the tail of a sentence beats failing an interview turn the
+ * candidate already answered.
+ */
+function prose(max: number) {
+  return (value: unknown) => {
+    const collapsed = collapseToText(value);
+    return typeof collapsed === "string" && collapsed.length > max
+      ? collapsed.slice(0, max)
+      : collapsed;
+  };
+}
+
+/** Models hand back "85" as often as 85, and occasionally 105. */
+const scoreValue = z.preprocess(
+  (value) => {
+    const parsed = typeof value === "string" ? Number(value.trim()) : value;
+    if (typeof parsed !== "number" || !Number.isFinite(parsed)) return parsed;
+    return Math.min(100, Math.max(0, parsed));
+  },
+  z.number().min(0).max(100),
+);
 
 export const answerEvaluationSchema = z.object({
   scores: z.object({
-    technicalDepth: z.number().min(0).max(100),
-    ownership: z.number().min(0).max(100),
-    metrics: z.number().min(0).max(100),
-    tradeoffs: z.number().min(0).max(100),
-    communication: z.number().min(0).max(100),
-    systemThinking: z.number().min(0).max(100),
+    technicalDepth: scoreValue,
+    ownership: scoreValue,
+    metrics: scoreValue,
+    tradeoffs: scoreValue,
+    communication: scoreValue,
+    systemThinking: scoreValue,
   }),
   /** What the answer established, in the interviewer's words. */
-  feedback: z.string().min(10).max(800),
+  feedback: z.preprocess(prose(800), z.string().min(10)),
   /** Set when the answer reveals the resume line overstates what happened. */
-  resumeIntegrityFlag: z.string().max(400).nullable().default(null),
-  followUp: z.string().max(400).nullable().default(null),
+  resumeIntegrityFlag: z.preprocess(prose(400), z.string().nullable().default(null)),
+  followUp: z.preprocess(prose(400), z.string().nullable().default(null)),
 });
 
 export type AnswerEvaluation = z.infer<typeof answerEvaluationSchema>;
