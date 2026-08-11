@@ -106,6 +106,44 @@ describe("complete", () => {
     );
   });
 
+  /**
+   * The two cases read identically to the user unless we separate them, and a
+   * local Ollama dropping the connection was reported as "every free model is
+   * rate-limited" — advice that sends someone off to wait for nothing.
+   */
+  it("marks a chain that failed purely on quota as rate-limited", async () => {
+    process.env.LLM_MODELS = "groq:model-a,groq:model-b";
+    process.env.GROQ_API_KEY = "key";
+    resetLlmCache();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("slow down", { status: 429 }));
+
+    const error = await complete({ messages: [{ role: "user", content: "hi" }] }).catch((e) => e);
+    expect(error).toBeInstanceOf(LlmUnavailableError);
+    expect(error.rateLimited).toBe(true);
+  });
+
+  it("does not call a network failure a rate limit", async () => {
+    process.env.LLM_MODELS = "ollama:qwen3:8b";
+    resetLlmCache();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch failed"));
+
+    const error = await complete({ messages: [{ role: "user", content: "hi" }] }).catch((e) => e);
+    expect(error).toBeInstanceOf(LlmUnavailableError);
+    expect(error.rateLimited).toBe(false);
+  });
+
+  it("does not call a mixed failure a rate limit", async () => {
+    process.env.LLM_MODELS = "groq:model-a,groq:model-b";
+    process.env.GROQ_API_KEY = "key";
+    resetLlmCache();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+      .mockResolvedValueOnce(new Response("gone", { status: 500 }));
+
+    const error = await complete({ messages: [{ role: "user", content: "hi" }] }).catch((e) => e);
+    expect(error.rateLimited).toBe(false);
+  });
+
   it("explains itself when nothing is configured", async () => {
     process.env.GROQ_API_KEY = "";
     process.env.LLM_MODELS = "groq:model-a";

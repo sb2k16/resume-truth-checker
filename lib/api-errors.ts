@@ -16,8 +16,9 @@ export function toErrorResponse(error: unknown): NextResponse {
     console.error("[llm] all models failed", error.attempts);
     return NextResponse.json(
       {
-        error:
-          "Every free model we use is rate-limited right now. Wait a minute and try again — nothing about your resume caused this.",
+        error: error.rateLimited
+          ? "Every free model we use is rate-limited right now. Wait a minute and try again — nothing about your resume caused this."
+          : "We couldn't reach a model to read your resume. That's a problem on our side, not with your resume — please try again shortly.",
       },
       { status: 503 },
     );

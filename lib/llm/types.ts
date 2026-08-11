@@ -47,14 +47,34 @@ export class RetryableLlmError extends Error {
   }
 }
 
+export interface LlmAttempt {
+  target: LlmTarget;
+  error: string;
+  /** HTTP status, when the failure came back as one. */
+  status?: number;
+}
+
 /** Every target in the chain failed. */
 export class LlmUnavailableError extends Error {
-  constructor(readonly attempts: { target: LlmTarget; error: string }[]) {
+  constructor(readonly attempts: LlmAttempt[]) {
     super(
       `All ${attempts.length} model(s) failed: ` +
         attempts.map((a) => `${a.target.provider}/${a.target.model} (${a.error})`).join("; "),
     );
     this.name = "LlmUnavailableError";
+  }
+
+  /**
+   * True only when every model refused for quota reasons. A timeout, an outage
+   * or a retired model id is a different problem and deserves a different
+   * sentence — telling someone to "wait a minute" when the real cause is a dead
+   * model id sends them away to retry something that will never work.
+   */
+  get rateLimited(): boolean {
+    return (
+      this.attempts.length > 0 &&
+      this.attempts.every((attempt) => attempt.status === 429 || attempt.status === 402)
+    );
   }
 }
 

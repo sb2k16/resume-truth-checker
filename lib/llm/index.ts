@@ -3,6 +3,7 @@ import {
   ChatMessage,
   CompletionOptions,
   CompletionResult,
+  LlmAttempt,
   LlmProvider,
   LlmTarget,
   LlmUnavailableError,
@@ -122,7 +123,7 @@ export async function complete(options: CompletionOptions): Promise<CompletionRe
     );
   }
 
-  const attempts: { target: LlmTarget; error: string }[] = [];
+  const attempts: LlmAttempt[] = [];
 
   for (const target of chain) {
     const provider = providers().get(target.provider);
@@ -136,7 +137,11 @@ export async function complete(options: CompletionOptions): Promise<CompletionRe
       return { text, model: target.model, provider: target.provider };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      attempts.push({ target, error: message });
+      attempts.push({
+        target,
+        error: message,
+        status: error instanceof RetryableLlmError ? error.status : undefined,
+      });
 
       // A hard rejection from one model (unsupported params, unknown model id)
       // still lets the next model try — but log it distinctly in the attempts.
