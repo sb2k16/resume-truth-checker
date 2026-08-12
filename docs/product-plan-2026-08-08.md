@@ -1,8 +1,8 @@
 # AI Resume Truth Checker — Product Plan
 
 **Saved:** 2026-08-08
-**Status:** v1 scope (§40) code-complete and unverified against a real model — see §42 (2026-08-10)
-**Version:** 1.1
+**Status:** v1 scope (§40) working end to end against a live model; Phase 0 complete, Phase 1 (production) next — see §42
+**Version:** 1.2
 **Product Type:** AI career / interview preparation
 **MVP:** Web application
 **Primary User:** Software engineers and technical professionals
@@ -1097,9 +1097,13 @@ Deferred per §41 and correctly absent: evidence system, job-description mode, d
 
 ## 42.2 The governing fact
 
-**This code has never talked to a real model.** There is no `.env.local`, no API key, no
-database. Every prompt in `extract.ts`, `questions.ts`, and `evaluate.ts` is unvalidated
-guesswork that happens to typecheck. That dominates the sequence below.
+*(Resolved by Phase 0 — kept because it explains the sequencing below.)*
+
+**This code had never talked to a real model.** No `.env.local`, no API key, no database. Every
+prompt in `extract.ts`, `questions.ts` and `evaluate.ts` was unvalidated guesswork that happened
+to typecheck, and the whole model chain turned out to be dead ids. Five bugs came out of the first
+few live runs, none of which any amount of reading would have found. That is why Phase 0 comes
+before everything else.
 
 ## 42.3 Phase 0 — Prove it works at all
 
@@ -1117,11 +1121,69 @@ guesswork that happens to typecheck. That dominates the sequence below.
 you flinch? If a free open model cannot produce that reaction, nothing below matters. Expect the
 real Phase 0 work to be prompt iteration, not code.
 
+### Phase 0 outcome (completed 2026-08-12)
+
+Done. Six commits on `phase-0`; 86 tests, typecheck, lint and a production build all green, and
+the full flow verified end to end against `next start`, not just `next dev`.
+
+**Inference is Groq, not OpenRouter.** No OpenRouter key existed; a valid `GROQ_API_KEY` was
+reused from `workplace/siddhanta/server/.env`. Groq serves open-weight models, so §41's
+no-closed-models rule holds. OpenRouter stays first in the chain and activates the moment a key
+is set.
+
+**Speed is a non-issue.** Analysis is ~4s end to end (extract 2.1s, questions 0.9s, evaluate
+1.0s), against §24's 30–60s budget. The same run on a local 7B took 4m05s. The `maxDuration = 120`
+concern raised in §42.4 is therefore moot at Groq speeds — but it is a real ceiling if the chain
+ever falls through to a slow provider.
+
+**The §33 question is answered: the integrity check works.** A five-question interview produced
+four integrity flags, including the exact §15 case — resume claims a 70% incident reduction, the
+candidate describes a latency fix and cannot name a baseline. It named the mismatch and invented
+no numbers.
+
+#### Bugs found, all of which needed a live model to surface
+
+1. **Every model id in the chain was dead.** All three OpenRouter ids, plus `qwen/qwen3-32b` on
+   Groq. The chain could never have answered a request. `npm run check:models` now diffs the chain
+   against both live catalogues.
+2. **Dropped response envelopes.** Asked for `{"claims":[...]}`, models return a bare `[...]` —
+   and answer the repair prompt with the same bare array, so extraction burned two free-tier calls
+   and still failed. `extractJson` only ever fixed *syntax*; these payloads were valid JSON of the
+   wrong shape. Response schemas now accept either form, collapse an object handed to a free-text
+   field, truncate over-length prose instead of rejecting it, and coerce/clamp numeric scores.
+3. **Every failure reported as a rate limit.** `LlmUnavailableError` covers quota, timeout,
+   network, outage *and a retired model id*, but the message told everyone to wait a minute — which
+   for a dead id is advice to retry something that will never work. Attempts now carry their HTTP
+   status.
+4. **Headcounts scored as metrics.** "Mentored three junior engineers" came back HIGH 67 and "Led
+   migration of four teams" HIGH 73, because the `quantified` signal treated any digit as a
+   measurement and applied the missing-baseline/method/period penalties. The false positives were
+   burying the claims that genuinely need a baseline. After the fix: MEDIUM 39 and out of the top
+   five respectively, with the real quantitative claims holding at VERY_HIGH 84.
+5. **The store was two stores — every report 404'd.** The worst of them, and invisible to the
+   smoke script. See §42.4 item 6, now rewritten.
+
+#### Still open
+
+* **`gpt-oss-120b` is 403 on this Groq key** — blocked at the project level. The chain falls
+  through correctly but silently, so the configured model was not the one answering. It now sits
+  second, behind the model that works. Enabling it in the Groq project settings would be an upgrade.
+* **Extraction is non-deterministic enough to reorder headline claims.** Same resume, two runs:
+  the architecture claim scored HIGH 70, then VERY_HIGH 86. Risk *scoring* is deterministic; the
+  model's signal judgements feeding it are not.
+* **"Architected the company's distributed data platform" scores MEDIUM 50**, where §11 names that
+  exact archetype VERY HIGH. It now picks up the scope flag, so it is closer. Worth judging across
+  several real resumes rather than tuning against one synthetic fixture.
+* **No browser walk.** Every screen was verified through its rendered HTML (30 assertions across
+  all six screens, session-binding, and the error paths), but nothing has been looked at by a human
+  or driven through a real browser. Layout, mobile and the client-side interview loop are unverified.
+
 ## 42.4 Phase 1 — Make it survivable in production
 
-6. **Provision Neon, set `DATABASE_URL`.** Not optional, despite what `lib/store/index.ts:14`
-   implies: `MemoryStore` is per-process, so on serverless an analysis written by one instance is
-   a 404 on the next. Today the app is only correct on a single long-lived server.
+6. **Provision Neon, set `DATABASE_URL`.** Phase 0 fixed the store being constructed once per
+   module graph, so `MemoryStore` now works on a single long-lived server — but no further. It is
+   still per-process, so on serverless an analysis written by one instance is a 404 on the next.
+   Required before deploying, not before running locally.
 7. **Rate-limit `POST /api/interview/[id]/answer`.** It has none. Each answer costs *two* LLM calls
    (evaluate + next question) and is unbounded — the largest free-tier hole. The other two routes
    are limited.
