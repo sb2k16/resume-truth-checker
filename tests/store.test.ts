@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MemoryStore } from "@/lib/store/memory";
+import { getStore, setStore } from "@/lib/store";
 import { ScoredClaim } from "@/lib/claims/schema";
 import { rateLimit, resetRateLimits } from "@/lib/rate-limit";
 
@@ -118,5 +119,44 @@ describe("rateLimit", () => {
       /* wait out the 1ms window */
     }
     expect(rateLimit("w", 1, 1).ok).toBe(true);
+  });
+});
+
+/**
+ * Next compiles route handlers and server components into separate module
+ * graphs, so a module-scoped `let` singleton is constructed once per graph.
+ * That gave POST /api/analyze one MemoryStore and /r/[id] another, and every
+ * report 404'd the instant it was created — in dev and in a production build.
+ * Keeping the instance on globalThis is what makes the two sides agree.
+ */
+describe("store singleton", () => {
+  const GLOBAL_KEY = "__resumeTruthCheckerStore";
+
+  afterEach(() => setStore(null));
+
+  it("returns the same instance across calls", () => {
+    setStore(null);
+    expect(getStore()).toBe(getStore());
+  });
+
+  it("keeps the instance on globalThis, not module scope", () => {
+    setStore(null);
+    const store = getStore();
+    expect((globalThis as Record<string, unknown>)[GLOBAL_KEY]).toBe(store);
+  });
+
+  it("adopts an instance another module graph already created", () => {
+    setStore(null);
+    // Stand in for the copy of this module that the other graph loaded.
+    const fromOtherGraph = new MemoryStore();
+    (globalThis as Record<string, unknown>)[GLOBAL_KEY] = fromOtherGraph;
+
+    expect(getStore()).toBe(fromOtherGraph);
+  });
+
+  it("clears cleanly for tests", () => {
+    const first = getStore();
+    setStore(null);
+    expect(getStore()).not.toBe(first);
   });
 });
