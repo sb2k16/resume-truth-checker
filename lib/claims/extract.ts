@@ -19,6 +19,7 @@ Rules:
 - Never invent detail that is not in the resume. If a number is absent, that absence is the finding.
 - One resume bullet may contain several claims. Split them.
 - "sourceLine" must be copied verbatim from the resume text.
+- "technologies" are named tools, languages, platforms or services that appear IN THAT LINE — "Apache Flink", "DynamoDB", "Kafka". Never a description of the work ("memory-efficient search", "swap-trading system"), and never something you know about the candidate from elsewhere in the resume. If the line names no technology, return an empty list.
 - Judge signals from the resume text ALONE, not from what is plausible.
 
 Signal definitions:
@@ -78,8 +79,50 @@ export async function extractClaims(
     parsed = parseJson(repair.text, extractionResponseSchema);
   }
 
-  const deduped = dedupe(parsed.claims);
+  const deduped = groundTechnologies(dedupe(parsed.claims));
   return { claims: scoreClaims(deduped), model: first.model };
+}
+
+/**
+ * Drop technology tags that don't appear in the claim's own text.
+ *
+ * Models tag what they infer, not what the line says: a resume whose skills
+ * section lists Spark comes back with "Apache Spark" attached to bullets about
+ * Flink. That is the one error this product cannot make — it tells someone a
+ * skill is evidenced by experience they never described, which is exactly the
+ * claim an interviewer would dismantle.
+ *
+ * Nothing is lost by dropping them. A skill that is on the resume but in no
+ * bullet still surfaces against a posting, as "listed, nothing behind it" —
+ * which is the true answer.
+ */
+export function groundTechnologies<T extends { claim: string; sourceLine: string; technologies: string[] }>(
+  claims: T[],
+): T[] {
+  return claims.map((claim) => ({
+    ...claim,
+    technologies: claim.technologies.filter((technology) =>
+      appearsIn(`${claim.claim} ${claim.sourceLine}`, technology),
+    ),
+  }));
+}
+
+/**
+ * Case- and punctuation-insensitive containment. Models emit U+2011 non-breaking
+ * hyphens where the resume had ASCII ones, so dashes are unified before
+ * comparing; "C++" and "F#" survive because only separators are stripped.
+ */
+function appearsIn(text: string, technology: string): boolean {
+  const needle = flatten(technology);
+  if (needle.length < 2) return false;
+  return flatten(text).includes(needle);
+}
+
+function flatten(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\s\-_.,/()]+/g, "");
 }
 
 /** Models occasionally emit the same bullet twice under different categories. */

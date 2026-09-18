@@ -9,6 +9,8 @@ import {
   resumeSkills,
 } from "@/lib/jd/match";
 import { JdRequirement } from "@/lib/jd/schema";
+import { isCapability } from "@/lib/jd/extract";
+import { groundTechnologies } from "@/lib/claims/extract";
 
 function claim(overrides: Partial<ScoredClaim> & { id: string }): ScoredClaim {
   return {
@@ -292,5 +294,63 @@ describe("resumeSkills", () => {
       claim({ id: "c2", technologies: ["PostgreSQL"] }),
     ];
     expect(resumeSkills(claims)).toHaveLength(1);
+  });
+});
+
+describe("JD requirement hygiene", () => {
+  it("drops education, which no interview prep can change", () => {
+    // One real posting produced five separate degree "requirements" — most of a
+    // coverage score spent on something the candidate cannot act on.
+    const degrees = [
+      "BS in Computer Science",
+      "Computer Science degree",
+      "MS in databases",
+      "PhD in distributed systems",
+      "Master's in engineering",
+    ];
+    for (const skill of degrees) {
+      expect(isCapability({ skill, importance: "required", sourceLine: "" })).toBe(false);
+    }
+  });
+
+  it("keeps skills that merely contain a degree-ish word", () => {
+    // "MS SQL Server" is a skill; "MS in databases" is a credential.
+    for (const skill of [
+      "Databases",
+      "Graduate-level algorithms research",
+      "Distributed systems",
+      "MS SQL Server",
+    ]) {
+      expect(isCapability({ skill, importance: "required", sourceLine: "" })).toBe(true);
+    }
+  });
+});
+
+describe("technology grounding", () => {
+  it("drops a tag the claim's own text never mentions", () => {
+    // The dangerous case: a skills section lists Spark, the model attaches it to
+    // a bullet about Flink, and the report tells a candidate their Spark
+    // experience is evidenced. It isn't.
+    expect(
+      groundTechnologies([
+        {
+          claim: "Optimized Apache Flink streaming pipelines.",
+          sourceLine: "Optimized Apache Flink streaming pipelines.",
+          technologies: ["Apache Flink", "Apache Spark"],
+        },
+      ])[0].technologies,
+    ).toEqual(["Apache Flink"]);
+  });
+
+  it("matches across the non-breaking hyphens models emit", () => {
+    expect(
+      groundTechnologies([
+        {
+          claim: "Ran a Retrieval‑Augmented Generation proof of concept.",
+          sourceLine: "Ran a Retrieval-Augmented Generation proof of concept.",
+          technologies: ["Retrieval-Augmented Generation"],
+        },
+      ])[0].technologies,
+    ).toEqual(["Retrieval-Augmented Generation"]);
   });
 });

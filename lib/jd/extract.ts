@@ -12,6 +12,8 @@ Rules:
 - Split a line that names several things. "Python, Go or Java" is three requirements.
 - "required" means the posting states it as a must, a minimum, or lists it under requirements/qualifications. "preferred" means nice-to-have, bonus, plus.
 - Skip everything that is not a capability: salary, benefits, location, visa policy, equal-opportunity boilerplate, company description, years-of-experience counts on their own.
+- Skip education entirely. "BS in Computer Science", "MS or PhD in databases" and the like are not skills — a candidate cannot prepare for an interview question about a degree, and listing them as gaps buries the requirements that matter.
+- Skip dispositions and ways of working: "comfortable with ambiguity", "driven by customer value", "comfortable working towards a multi-year vision". They are real, but nothing on a resume evidences them and every one of them reports as a gap.
 - Skip duplicates. One entry per capability.
 - "sourceLine" is the posting's own wording, copied.
 
@@ -35,7 +37,27 @@ export async function extractRequirements(jdText: string): Promise<JdExtractionR
   });
 
   const parsed = parseJson(text, jdExtractionSchema);
-  return { requirements: dedupe(parsed.requirements), model };
+  return { requirements: dedupe(parsed.requirements.filter(isCapability)), model };
+}
+
+/**
+ * Degrees survive the prompt often enough to need a second line of defence:
+ * one posting produced "Computer Science degree", "MS in databases", "PhD in
+ * databases", "MS in distributed systems" and "PhD in distributed systems" as
+ * five separate unmet requirements, which is most of a coverage score spent on
+ * something no interview prep can change.
+ */
+
+/**
+ * A credential, not a mention of one. The degree abbreviations only count when
+ * the requirement is the degree itself — "MS in databases" — so "MS SQL Server"
+ * survives, and so does "graduate-level algorithms research".
+ */
+const CREDENTIAL = /^\s*(bs|ba|bsc|ms|msc|ma|mba|ph\.?d|b\.s\.|m\.s\.|bachelor'?s?|master'?s?|doctorate)\b(\s+in\b|\s*$)/i;
+const AWARDED = /\b(degree|diploma)\b/i;
+
+export function isCapability(requirement: JdRequirement): boolean {
+  return !CREDENTIAL.test(requirement.skill) && !AWARDED.test(requirement.skill);
 }
 
 /**
