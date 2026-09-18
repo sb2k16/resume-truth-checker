@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
       claims,
       defensibility: defensibilityScore(claims),
       model,
+      jobMatch: null,
     });
 
     return NextResponse.json({ id: analysis.id });

@@ -1,3 +1,4 @@
+import { JobMatch } from "@/lib/jd/schema";
 import { Analysis, Interview, Store } from "./types";
 
 const TTL_MS = 6 * 60 * 60 * 1000;
@@ -21,6 +22,12 @@ export class MemoryStore implements Store {
 
   async getAnalysis(id: string): Promise<Analysis | null> {
     return this.read(this.analyses, id);
+  }
+
+  async saveJobMatch(analysisId: string, match: JobMatch): Promise<void> {
+    const entry = this.analyses.get(analysisId);
+    if (!entry) return;
+    entry.value = { ...entry.value, jobMatch: match };
   }
 
   async createInterview(

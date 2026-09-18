@@ -61,6 +61,12 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           >
             Start the interview
           </Link>
+          <Link
+            href={`/r/${analysis.id}/match`}
+            className="border border-ink-line px-6 py-3 font-mono text-sm transition-colors hover:border-paper-faint"
+          >
+            {analysis.jobMatch ? "Job match" : "Match a posting"}
+          </Link>
           <span className="text-sm text-paper-faint">5 questions · about 10 minutes</span>
         </div>
       </section>

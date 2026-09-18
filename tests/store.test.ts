@@ -41,6 +41,7 @@ describe("MemoryStore", () => {
       claims: [claim("c1")],
       defensibility: 62,
       model: "test",
+      jobMatch: null,
     });
 
     expect(created.createdAt).toBeTruthy();

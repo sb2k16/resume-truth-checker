@@ -1,5 +1,6 @@
 import { AnswerEvaluation, ScoredClaim } from "@/lib/claims/schema";
 import { PressureLevel } from "@/lib/interview/questions";
+import { JobMatch } from "@/lib/jd/schema";
 
 export interface Analysis {
   id: string;
@@ -12,6 +13,8 @@ export interface Analysis {
   claims: ScoredClaim[];
   defensibility: number;
   model: string;
+  /** Set once the report is pointed at a posting (§21). At most one at a time. */
+  jobMatch: JobMatch | null;
 }
 
 export interface InterviewTurn {
@@ -39,6 +42,7 @@ export interface Interview {
 export interface Store {
   createAnalysis(analysis: Omit<Analysis, "createdAt">): Promise<Analysis>;
   getAnalysis(id: string): Promise<Analysis | null>;
+  saveJobMatch(analysisId: string, match: JobMatch): Promise<void>;
   createInterview(
     interview: Omit<Interview, "createdAt" | "turns" | "completedAt">,
   ): Promise<Interview>;

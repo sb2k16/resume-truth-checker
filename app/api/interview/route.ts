@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { riskiest } from "@/lib/claims/risk";
+import { claimsForFocus } from "@/lib/jd/match";
 import { PRESSURE_LEVELS } from "@/lib/interview/questions";
 import { TOTAL_QUESTIONS, nextQuestion } from "@/lib/interview/runner";
+import { ScoredClaim } from "@/lib/claims/schema";
+import { Analysis } from "@/lib/store/types";
 import { getStore } from "@/lib/store";
 import { ensureSessionId, newId } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
@@ -39,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Analysis not found." }, { status: 404 });
     }
 
-    const ordered = orderClaims(analysis.claims, body.claimId);
+    const ordered = orderClaims(analysis, body.claimId);
     const interview = await store.createInterview({
       id: newId("i"),
       analysisId: analysis.id,
@@ -74,15 +77,28 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Riskiest claims first — with the one the user clicked promoted to the front. */
-function orderClaims(claims: Parameters<typeof riskiest>[0], focusId?: string) {
-  const top = riskiest(claims, CLAIMS_PER_INTERVIEW);
-  if (!focusId) return top;
+/**
+ * Which claims this session attacks. Riskiest first by default; once the report
+ * has been pointed at a posting (§21), the claims backing that posting's most
+ * exposed requirements come first instead — an interview for a specific role
+ * should press what that role will press. A claim the user clicked still wins
+ * over both.
+ */
+function orderClaims(analysis: Analysis, focusId?: string) {
+  const { claims, jobMatch } = analysis;
+
+  const base = jobMatch
+    ? claimsForFocus(jobMatch.requirements, claims, CLAIMS_PER_INTERVIEW)
+        .map((claimId) => claims.find((claim) => claim.id === claimId))
+        .filter((claim): claim is ScoredClaim => Boolean(claim))
+    : riskiest(claims, CLAIMS_PER_INTERVIEW);
+
+  if (!focusId) return base;
 
   const focus = claims.find((claim) => claim.id === focusId);
-  if (!focus) return top;
+  if (!focus) return base;
 
-  const rest = top.filter((claim) => claim.id !== focusId);
+  const rest = base.filter((claim) => claim.id !== focusId);
   return [focus, ...rest].slice(0, CLAIMS_PER_INTERVIEW);
 }
 

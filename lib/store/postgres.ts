@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { JobMatch } from "@/lib/jd/schema";
 import { Analysis, Interview, Store } from "./types";
 
 type Sql = ReturnType<typeof neon>;
@@ -31,8 +32,12 @@ export class PostgresStore implements Store {
           resume_text TEXT NOT NULL,
           claims JSONB NOT NULL,
           defensibility INTEGER NOT NULL,
-          model TEXT NOT NULL
+          model TEXT NOT NULL,
+          job_match JSONB
         )`;
+      // CREATE TABLE IF NOT EXISTS leaves an existing table alone, so a column
+      // added after someone already has a database needs its own statement.
+      await this.sql`ALTER TABLE analyses ADD COLUMN IF NOT EXISTS job_match JSONB`;
       await this.sql`
         CREATE TABLE IF NOT EXISTS interviews (
           id TEXT PRIMARY KEY,
@@ -75,7 +80,14 @@ export class PostgresStore implements Store {
       claims: row.claims as unknown as Analysis["claims"],
       defensibility: Number(row.defensibility),
       model: String(row.model),
+      jobMatch: (row.job_match as unknown as Analysis["jobMatch"]) ?? null,
     };
+  }
+
+  async saveJobMatch(analysisId: string, match: JobMatch): Promise<void> {
+    await this.ensureSchema();
+    await this.sql`
+      UPDATE analyses SET job_match = ${JSON.stringify(match)} WHERE id = ${analysisId}`;
   }
 
   async createInterview(
