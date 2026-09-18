@@ -200,3 +200,18 @@ export const EVIDENCE_LABELS: Record<EvidenceKind, string> = {
   technical_design: "Technical design",
   alternatives_considered: "Alternatives considered",
 };
+
+/**
+ * §20: after the truth analysis, how to word the claim so it survives the
+ * questions above. `rewrite` is wording the candidate can defend from what the
+ * resume already says; `prepare` is what they still have to go and find out
+ * before the interview — the honest half of the advice, since most claims are
+ * weak for want of a baseline rather than for want of better phrasing.
+ */
+export const rewriteSuggestionSchema = z.object({
+  rewrite: z.preprocess(prose(400), z.string().min(10)),
+  rationale: z.preprocess(prose(400), z.string().min(10)),
+  prepare: z.array(z.string().max(200)).max(5).default([]),
+});
+
+export type RewriteSuggestion = z.infer<typeof rewriteSuggestionSchema>;

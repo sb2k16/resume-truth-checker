@@ -10,6 +10,7 @@ import { extractClaims } from "../lib/claims/extract";
 import { defensibilityScore, riskiest } from "../lib/claims/risk";
 import { generateQuestionsForClaims } from "../lib/interview/questions";
 import { evaluateAnswer } from "../lib/interview/evaluate";
+import { inventedNumbers, suggestRewrite } from "../lib/claims/rewrite";
 import { summarize } from "../lib/interview/score";
 
 const RESUME = `Souvik Example — Senior Software Engineer
@@ -70,6 +71,33 @@ async function main() {
   console.log("scores:", evaluation.scores);
   console.log("feedback:", evaluation.feedback);
   console.log("integrity flag:", evaluation.resumeIntegrityFlag ?? "(none)");
+
+  // Four calls in one run is over Groq's free 8000 TPM, so this last step is the
+  // one that gets rate-limited. Everything above it has already printed, and
+  // that output is the point of the script — don't bury it under a stack trace.
+  try {
+    console.time("rewrite");
+    const suggestion = await suggestRewrite(target, "Staff Software Engineer");
+    console.timeEnd("rewrite");
+
+    console.log(`\nrewrite of "${target.sourceLine}"`);
+    console.log(`   → ${suggestion.rewrite}`);
+    console.log(`   why: ${suggestion.rationale}`);
+    for (const item of suggestion.prepare) console.log(`   find: ${item}`);
+
+    // §20's rule, checked rather than trusted: the printed suggestion must carry
+    // no figure the resume didn't.
+    const fabricated = inventedNumbers(target, suggestion.rewrite);
+    console.log(
+      fabricated.length === 0
+        ? "   numbers: clean"
+        : `   numbers: INVENTED ${fabricated.join(", ")}`,
+    );
+  } catch (error) {
+    console.log(
+      `\nrewrite: skipped — ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   const summary = summarize([evaluation]);
   console.log(`\noverall: ${summary.overall}/100`);
